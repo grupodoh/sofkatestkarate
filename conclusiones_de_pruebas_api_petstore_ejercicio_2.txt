@@ -1,0 +1,97 @@
+================================================================================
+HALLAZGOS Y CONCLUSIONES - EJERCICIO 2: PRUEBAS DE API REST (SWAGGER PETSTORE)
+================================================================================
+
+1. RESUMEN EJECUTIVO
+--------------------
+Se implementó una suite de pruebas automatizadas utilizando Karate Framework para 
+validar el ciclo de vida completo (CRUD) de la gestión de usuarios en la API de 
+PetStore (https://petstore.swagger.io/v2). Se cubrieron los 5 escenarios 
+solicitados de manera secuencial y encadenada, validando códigos de estado HTTP, 
+esquemas de respuesta, integridad de datos y manejo dinámico de variables.
+
+2. ANÁLISIS TÉCNICO POR CASO DE PRUEBA (ENTRADAS, SALIDAS Y VARIABLES)
+----------------------------------------------------------------------
+
+2.1. Crear un usuario (POST /v2/user)
+  * Entradas: Payload en formato JSON con los campos id, username, firstName, 
+    lastName, email, password, phone y userStatus.
+  * Manejo de Variables: Se generaron valores dinámicos (por ejemplo, usando 
+    timestamps o UUID para el 'username' y 'id') para evitar colisiones con 
+    usuarios preexistentes en el entorno compartido de PetStore. El 'username' 
+    se almacenó en una variable global del escenario para reutilizarlo en los 
+    pasos posteriores.
+  * Salidas Esperadas/Obtenidas: Código de estado HTTP 200 OK. El cuerpo de la 
+    respuesta devuelve un objeto estándar de API con estructura:
+    { "code": 200, "type": "unknown", "message": "<id_del_usuario>" }.
+
+2.2. Buscar el usuario creado (GET /v2/user/{username})
+  * Entradas: Parámetro de ruta (Path Parameter) '{username}' capturado del 
+    paso anterior.
+  * Salidas Esperadas/Obtenidas: Código de estado HTTP 200 OK y un objeto JSON 
+    con los detalles completos del usuario. Se validó mediante aserciones 
+    ('match') que el username, firstName y email coincidieran exactamente con 
+    los enviados en la creación.
+
+2.3. Actualizar el nombre y el correo del usuario (PUT /v2/user/{username})
+  * Entradas: Parámetro de ruta '{username}' y payload JSON completo del 
+    usuario modificando los campos 'firstName' y 'email'.
+  * Hallazgo Técnico: El método PUT requiere enviar el objeto completo del 
+    usuario; si se omiten campos como 'id' o 'password', el servicio los 
+    sobrescribe con valores nulos o por defecto.
+  * Salidas Esperadas/Obtenidas: Código de estado HTTP 200 OK con el mensaje 
+    de confirmación del ID actualizado.
+
+2.4. Buscar el usuario actualizado (GET /v2/user/{username})
+  * Entradas: Parámetro de ruta '{username}'.
+  * Salidas Esperadas/Obtenidas: Código de estado HTTP 200 OK. Se verificó que 
+    los nuevos valores de 'firstName' y 'email' persistieran correctamente y que 
+    el resto de los atributos se mantuvieran intactos.
+
+2.5. Eliminar el usuario (DELETE /v2/user/{username})
+  * Entradas: Parámetro de ruta '{username}'.
+  * Salidas Esperadas/Obtenidas: Código de estado HTTP 200 OK con respuesta:
+    { "code": 200, "type": "unknown", "message": "<username>" }.
+  * Validación adicional recomendada: Realizar un GET posterior debe retornar 
+    HTTP 404 Not Found con el mensaje "User not found", confirmando el borrado.
+
+3. HALLAZGOS IMPORTANTES SOBRE LA API DE PETSTORE (COMPORTAMIENTO DEL ENTORNO)
+------------------------------------------------------------------------------
+Durante la ejecución y análisis de los servicios de Swagger Petstore se 
+identificaron los siguientes comportamientos clave:
+
+  * Consistencia Eventual / Latencia en Base de Datos Pública: Al tratarse de 
+    un servidor de demostración público con alta concurrencia, ocasionalmente 
+    existe una leve latencia de replicación entre una operación de escritura 
+    (POST/PUT/DELETE) y su lectura inmediata (GET). En pruebas continuas, esto 
+    puede provocar falsos negativos (ej. recibir un 404 justo milisegundos 
+    después de un POST o leer datos antiguos tras un PUT).
+  * Uso de Datos Dinámicos vs. Estáticos: Dado que la base de datos es pública 
+    y compartida por múltiples usuarios a nivel mundial, utilizar un 'username' 
+    fijo (ej. "user1") genera conflictos de sobrescritura si otro usuario ejecuta 
+    pruebas simultáneamente. La parametrización dinámica de variables es crítica 
+    para garantizar la aislación e idempotencia de la prueba.
+  * Seguridad y Autenticación: Aunque la documentación de Swagger muestra un 
+    esquema de autorización ('api_key' / OAuth2), los endpoints de /user permiten 
+    crear, consultar, modificar y eliminar registros sin validar credenciales 
+    reales, lo cual es esperado en un sandbox de pruebas pero representaría una 
+    vulnerabilidad crítica (Broken Access Control) en un entorno productivo.
+  * Códigos de Respuesta HTTP: La operación de creación (POST /user) retorna 
+    HTTP 200 OK en lugar del estándar RESTful HTTP 201 Created, y devuelve el ID 
+    como un String dentro del campo 'message' en lugar de retornar el recurso 
+    creado.
+
+4. CONCLUSIONES Y VENTAJAS DE LA IMPLEMENTACIÓN EN KARATE
+---------------------------------------------------------
+  1. Encadenamiento Nativo de Escenarios: Karate permitió capturar variables 
+     de entrada y salida directamente en sintaxis Gherkin sin necesidad de 
+     escribir código boilerplate en Java para serializar/deserializar JSON.
+  2. Validación Robusta de Contratos: El uso de expresiones 'match' y 
+     marcadores de tipo (#string, #number) asegura no solo que los valores 
+     funcionales sean correctos, sino también que la estructura del contrato 
+     de la API no sufra regresiones.
+  3. Trazabilidad y Reportes: La generación automática de reportes HTML por 
+     parte de Karate facilita la auditoría técnica, mostrando de forma clara 
+     cada request (headers, URL, body) y response (status, tiempos de respuesta, 
+     payload) para cada uno de los 5 pasos del flujo.
+================================================================================
